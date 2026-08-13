@@ -1,0 +1,6 @@
+{
+  "name": "Stock Trade Journal",
+  "description": "A responsive stock trading journal and analytics system with Excel import, strategy evaluation, and performance dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
