@@ -37,6 +37,7 @@ import { ExcelImportModal } from './components/ExcelImportModal';
 import { AnalyticsCharts } from './components/AnalyticsCharts';
 import { StrategyManager } from './components/StrategyManager';
 import { PositionsSummary } from './components/PositionsSummary';
+import { NotesTaskBoard } from './components/NotesTaskBoard';
 import { AuthModal } from './components/AuthModal';
 import { StockQuickSelector } from './components/StockQuickSelector';
 import { PendingFundTradesBanner } from './components/PendingFundTradesBanner';
@@ -143,7 +144,13 @@ export default function App() {
     return [];
   });
 
-  const [activeTab, setActiveTab] = useState<'ledger' | 'analytics' | 'positions' | 'strategies' | 'import'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'analytics' | 'positions' | 'strategies' | 'import' | 'notes'>('ledger');
+
+  const pendingNotesCount = useMemo(() => {
+    return trades.filter(t => t.notes && t.notes.trim().length > 0 && (
+      t.notesStatus === 'pending' || (t.notesStatus !== 'completed' && !t.notesCompleted)
+    )).length;
+  }, [trades]);
   
   // Stock Quick Filter State
   const [selectedStockCode, setSelectedStockCode] = useState<string | null>(null);
@@ -595,6 +602,7 @@ export default function App() {
         onSaveAndSync={handleSaveAndSyncToDb}
         isCloudSynced={isCloudSynced}
         tradeCount={trades.length}
+        pendingNotesCount={pendingNotesCount}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
@@ -729,6 +737,16 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Tab 6: Dedicated Notes Task Board (跟进待办板块) */}
+        {activeTab === 'notes' && (
+          <NotesTaskBoard
+            trades={trades}
+            onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
+            onSetNoteStatus={handleSetNoteStatus}
+            onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+          />
         )}
       </main>
 

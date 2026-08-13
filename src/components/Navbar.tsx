@@ -6,6 +6,7 @@ import {
   Briefcase, 
   Target, 
   FileSpreadsheet, 
+  ClipboardList,
   Cloud, 
   CloudOff, 
   User as UserIcon, 
@@ -21,8 +22,8 @@ import { UserProfile } from '../types';
 import { lockPasscodeSystem } from './PasscodeGate';
 
 interface NavbarProps {
-  activeTab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import';
-  setActiveTab: (tab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import') => void;
+  activeTab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import' | 'notes';
+  setActiveTab: (tab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import' | 'notes') => void;
   user: UserProfile | null;
   onOpenAuthModal: () => void;
   onOpenTradeForm: () => void;
@@ -31,6 +32,7 @@ interface NavbarProps {
   onSaveAndSync: () => void;
   isCloudSynced: boolean;
   tradeCount: number;
+  pendingNotesCount?: number;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -48,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSaveAndSync,
   isCloudSynced,
   tradeCount,
+  pendingNotesCount = 0,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -136,6 +139,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Excel导入/备份</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'notes'
+                  ? 'bg-emerald-500 text-slate-950 font-semibold shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <ClipboardList className="w-4 h-4 text-amber-400" />
+              <span>跟进待办</span>
+              {typeof pendingNotesCount === 'number' && pendingNotesCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  {pendingNotesCount}
+                </span>
+              )}
             </button>
           </nav>
 
@@ -302,6 +322,21 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <FileSpreadsheet className="w-4 h-4" />
           <span className="text-[10px] mt-0.5">导入备份</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('notes')}
+          className={`flex flex-col items-center py-1 px-2 rounded-lg relative ${
+            activeTab === 'notes' ? 'text-emerald-400 font-bold bg-slate-900' : 'text-slate-400'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4 text-amber-400" />
+          <span className="text-[10px] mt-0.5">跟进待办</span>
+          {typeof pendingNotesCount === 'number' && pendingNotesCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center">
+              {pendingNotesCount > 99 ? '99+' : pendingNotesCount}
+            </span>
+          )}
         </button>
       </div>
     </header>
