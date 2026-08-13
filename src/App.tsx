@@ -273,7 +273,7 @@ export default function App() {
   // Filtered trades by selected stock
   const displayTrades = useMemo(() => {
     if (!selectedStockCode) return trades;
-    return trades.filter(t => t.stockCode === selectedStockCode);
+    return trades.filter(t => t.stockCode === selectedStockCode || t.stockName === selectedStockCode);
   }, [trades, selectedStockCode]);
 
   // Explicit Save & Sync All Trades to Database Handler

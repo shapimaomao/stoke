@@ -102,10 +102,27 @@ export function computeTradeDerivedFields(
  * Fills in missing cost basis, accumulated position, amounts, PnL %, position PnL, and total PnL.
  */
 export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRecord[] {
-  // Group by stockCode
+  // Smart Group by stockCode / stockName mapping
   const stockGroups: Record<string, TradeRecord[]> = {};
+  const codeToKeyMap: Record<string, string> = {};
+  const nameToKeyMap: Record<string, string> = {};
+
   trades.forEach(t => {
-    const key = t.stockCode || 'UNKNOWN';
+    const code = (t.stockCode || '').trim();
+    const name = (t.stockName || '').trim();
+
+    let key = '';
+    if (code && codeToKeyMap[code]) {
+      key = codeToKeyMap[code];
+    } else if (name && nameToKeyMap[name]) {
+      key = nameToKeyMap[name];
+    } else {
+      key = code || name || 'UNKNOWN';
+    }
+
+    if (code) codeToKeyMap[code] = key;
+    if (name) nameToKeyMap[name] = key;
+
     if (!stockGroups[key]) stockGroups[key] = [];
     stockGroups[key].push(t);
   });
@@ -113,11 +130,19 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
   const updatedAll: TradeRecord[] = [];
 
   Object.values(stockGroups).forEach(group => {
-    // Sort ascending by date
+    // Sort ascending by date; on same date, BUYs and Dividends come before SELLs
     const sorted = [...group].sort((a, b) => {
       const dateA = new Date(a.tradeDate).getTime();
       const dateB = new Date(b.tradeDate).getTime();
       if (dateA !== dateB) return dateA - dateB;
+
+      if (a.tradeAction !== b.tradeAction) {
+        if (a.tradeAction === 'buy') return -1;
+        if (b.tradeAction === 'buy') return 1;
+        if (a.tradeAction === 'dividend') return -1;
+        if (b.tradeAction === 'dividend') return 1;
+      }
+
       return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
     });
 
