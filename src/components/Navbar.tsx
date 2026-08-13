@@ -13,7 +13,9 @@ import {
   Download, 
   RefreshCw,
   Save,
-  Lock
+  Lock,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { lockPasscodeSystem } from './PasscodeGate';
@@ -29,6 +31,10 @@ interface NavbarProps {
   onSaveAndSync: () => void;
   isCloudSynced: boolean;
   tradeCount: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -42,6 +48,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSaveAndSync,
   isCloudSynced,
   tradeCount,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-30 shadow-md">
@@ -131,6 +141,36 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Buttons Right */}
           <div className="flex items-center space-x-2">
+            {/* Undo / Redo Buttons */}
+            <div className="flex items-center space-x-0.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="撤销上一步操作 (Ctrl+Z)"
+                className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 ${
+                  canUndo
+                    ? 'text-slate-200 hover:text-emerald-400 hover:bg-slate-800 cursor-pointer'
+                    : 'text-slate-600 cursor-not-allowed opacity-40'
+                }`}
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline text-[11px]">撤销</span>
+              </button>
+              <button
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="重做操作 (Ctrl+Y / Ctrl+Shift+Z)"
+                className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 ${
+                  canRedo
+                    ? 'text-slate-200 hover:text-emerald-400 hover:bg-slate-800 cursor-pointer'
+                    : 'text-slate-600 cursor-not-allowed opacity-40'
+                }`}
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline text-[11px]">重做</span>
+              </button>
+            </div>
+
             <button
               onClick={onOpenTradeForm}
               className="hidden sm:flex items-center space-x-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 px-3.5 py-2 rounded-xl text-sm font-semibold shadow-md transition-all active:scale-95"

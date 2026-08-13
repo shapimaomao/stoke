@@ -15,7 +15,9 @@ import {
   Tag,
   Building,
   Save,
-  Check
+  Check,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { TradeRecord } from '../types';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
@@ -23,22 +25,32 @@ import { formatStrategyOwner, getStrategyOwnerBadgeStyle } from '../lib/strategy
 
 interface TradeTableProps {
   trades: TradeRecord[];
+  selectedStockCode?: string | null;
   onEditTrade: (trade: TradeRecord) => void;
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
-  onExportExcel: () => void;
+  onExportExcel: (customTrades?: TradeRecord[]) => void;
   onSaveAndSync?: () => void;
   onToggleNoteCompleted?: (tradeId: string) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export const TradeTable: React.FC<TradeTableProps> = ({
   trades,
+  selectedStockCode,
   onEditTrade,
   onDeleteTrades,
   onAddNewTrade,
   onExportExcel,
   onSaveAndSync,
   onToggleNoteCompleted,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [strategyFilter, setStrategyFilter] = useState('ALL');
@@ -239,6 +251,36 @@ export const TradeTable: React.FC<TradeTableProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Undo / Redo Toolbar Controls */}
+          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="撤销上一步操作 (Ctrl+Z)"
+              className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 ${
+                canUndo
+                  ? 'text-slate-200 hover:text-emerald-400 hover:bg-slate-800 cursor-pointer'
+                  : 'text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-[11px]">撤销</span>
+            </button>
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="重做操作 (Ctrl+Y / Ctrl+Shift+Z)"
+              className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 ${
+                canRedo
+                  ? 'text-slate-200 hover:text-emerald-400 hover:bg-slate-800 cursor-pointer'
+                  : 'text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-[11px]">重做</span>
+            </button>
+          </div>
+
           {selectedIds.length > 0 && (
             <button
               onClick={() => handleOpenDeleteModal(selectedIds)}
@@ -269,13 +311,20 @@ export const TradeTable: React.FC<TradeTableProps> = ({
             <span>直达底部</span>
           </button>
 
+          {/* Export Excel Button with dynamic filtered scope label */}
           <button
-            onClick={onExportExcel}
+            onClick={() => onExportExcel(sortedTrades)}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 rounded-xl text-xs font-semibold shadow-sm transition-all"
-            title="导出当前明细至 Excel (.xlsx) 表格"
+            title="导出当前查看的对账单 (只导出当前选定或筛选的股票/基金明细)"
           >
             <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span>导出 Excel 对账单</span>
+            <span>
+              {selectedStockCode
+                ? `导出当前【${sortedTrades[0]?.stockName || selectedStockCode}】对账单`
+                : sortedTrades.length < trades.length
+                ? `导出当前筛选对账单 (${sortedTrades.length}笔)`
+                : '导出 Excel 对账单'}
+            </span>
           </button>
 
           <button

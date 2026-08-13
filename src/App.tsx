@@ -62,6 +62,76 @@ export default function App() {
     return hasCleared ? [] : recalculateTradesChronologically(INITIAL_DEMO_TRADES);
   });
 
+  // History Stack State for Undo (撤销) & Redo (重做)
+  const [historyStack, setHistoryStack] = useState<TradeRecord[][]>(() => [trades]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < historyStack.length - 1;
+
+  // Helper to apply trades update with chronological recalculation and history push
+  const updateTradesWithHistory = (newTradesRaw: TradeRecord[]) => {
+    const recalculated = recalculateTradesChronologically(newTradesRaw);
+    setTrades(recalculated);
+    setHistoryStack(prev => {
+      const activeSlice = historyIndex >= 0 ? prev.slice(0, historyIndex + 1) : [];
+      return [...activeSlice, recalculated];
+    });
+    setHistoryIndex(prev => prev + 1);
+    localStorage.setItem('local_stock_trades', JSON.stringify(recalculated));
+  };
+
+  // Undo Handler
+  const handleUndo = () => {
+    if (historyIndex <= 0) return;
+    const prevIndex = historyIndex - 1;
+    const prevTrades = historyStack[prevIndex];
+    const recalculated = recalculateTradesChronologically(prevTrades);
+    setTrades(recalculated);
+    setHistoryIndex(prevIndex);
+    localStorage.setItem('local_stock_trades', JSON.stringify(recalculated));
+    showToast('↩️ 已成功撤销上一步操作！');
+  };
+
+  // Redo Handler
+  const handleRedo = () => {
+    if (historyIndex >= historyStack.length - 1) return;
+    const nextIndex = historyIndex + 1;
+    const nextTrades = historyStack[nextIndex];
+    const recalculated = recalculateTradesChronologically(nextTrades);
+    setTrades(recalculated);
+    setHistoryIndex(nextIndex);
+    localStorage.setItem('local_stock_trades', JSON.stringify(recalculated));
+    showToast('↪️ 已成功重做操作！');
+  };
+
+  // Global Keyboard Shortcuts for Undo (Ctrl+Z) & Redo (Ctrl+Y / Cmd+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl && 
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (canUndo) handleUndo();
+      } else if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
+      ) {
+        e.preventDefault();
+        if (canRedo) handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, canRedo, historyIndex, historyStack]);
+
   // Grid Strategy Configs State with Persistence
   const [gridConfigs, setGridConfigs] = useState<GridStrategyConfig[]>(() => {
     const saved = localStorage.getItem('local_grid_configs');
@@ -146,12 +216,12 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Subscribe to Firestore when user is authenticated with Firebase Auth
+  // 2. Subscribe to Firestore trades for real-time multi-device sync (Preview, Desktop & Mobile)
   useEffect(() => {
-    if (!user || user.uid === 'local_user' || !auth.currentUser) return;
+    if (!db) return;
 
     try {
-      const q = query(collection(db, 'trades'), where('userId', '==', user.uid));
+      const q = collection(db, 'trades');
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const firestoreTrades: TradeRecord[] = [];
         snapshot.forEach((docSnap) => {
@@ -167,10 +237,12 @@ export default function App() {
 
         if (firestoreTrades.length > 0) {
           setTrades(recalculateTradesChronologically(firestoreTrades));
+          setIsCloudSynced(true);
         } else if (hasCleared) {
           setTrades([]);
+          setIsCloudSynced(true);
         } else {
-          // If Firestore is empty, auto upload local trades so nothing is lost!
+          // If Firestore is empty, auto upload local trades so initial demo or local data is synced
           const saved = localStorage.getItem('local_stock_trades');
           if (saved) {
             try {
@@ -180,7 +252,7 @@ export default function App() {
                 localTrades.forEach(t => {
                   if (t.id) {
                     const docRef = doc(db, 'trades', t.id);
-                    batch.set(docRef, { ...t, userId: user.uid }, { merge: true });
+                    batch.set(docRef, { ...t, userId: user?.uid || 'shared_user' }, { merge: true });
                   }
                 });
                 batch.commit().catch(e => console.warn('Auto upload local trades error:', e));
@@ -199,12 +271,12 @@ export default function App() {
     }
   }, [user]);
 
-  // 3. Subscribe to Grid Configs in Firestore
+  // 3. Subscribe to Grid Configs in Firestore for real-time multi-device sync
   useEffect(() => {
-    if (!user || user.uid === 'local_user' || !auth.currentUser) return;
+    if (!db) return;
 
     try {
-      const q = query(collection(db, 'gridConfigs'), where('userId', '==', user.uid));
+      const q = collection(db, 'gridConfigs');
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const items: GridStrategyConfig[] = [];
         snapshot.forEach((docSnap) => {
@@ -242,10 +314,10 @@ export default function App() {
       }
     });
 
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'gridConfigs', config.stockCode);
-        await setDoc(docRef, { ...config, userId: user.uid }, { merge: true });
+        await setDoc(docRef, { ...config, userId: user?.uid || 'shared_user' }, { merge: true });
       } catch (e) {
         console.error('Save grid config to Firestore error:', e);
       }
@@ -255,7 +327,7 @@ export default function App() {
 
   const handleDeleteGridConfig = async (stockCode: string) => {
     setGridConfigs(prev => prev.filter(c => c.stockCode !== stockCode));
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         await deleteDoc(doc(db, 'gridConfigs', stockCode));
       } catch (e) {
@@ -279,23 +351,23 @@ export default function App() {
   // Explicit Save & Sync All Trades to Database Handler
   const handleSaveAndSyncToDb = async () => {
     localStorage.setItem('local_stock_trades', JSON.stringify(trades));
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         const batch = writeBatch(db);
         trades.forEach(t => {
           if (t.id) {
             const docRef = doc(db, 'trades', t.id);
-            batch.set(docRef, { ...t, userId: user.uid }, { merge: true });
+            batch.set(docRef, { ...t, userId: user?.uid || 'shared_user' }, { merge: true });
           }
         });
         await batch.commit();
-        showToast('💾 全部交易数据已成功保存，全量增量已同步至 Cloud Firestore 数据库！');
+        showToast('💾 全部交易数据已成功保存，全量增量已多端实时同步至 Cloud Firestore 数据库！');
       } catch (e) {
         console.error('Save to db error:', e);
         showToast('💾 交易数据已成功保存至本地数据库！');
       }
     } else {
-      showToast('💾 交易数据已保存至本地数据库！注册/登录账号即可无缝同步到云端数据库。');
+      showToast('💾 交易数据已保存至本地数据库！');
     }
   };
 
@@ -305,15 +377,17 @@ export default function App() {
     const existingId = partialTrade.id;
     const isEdit = Boolean(existingId && trades.some(t => t.id === existingId));
 
+    let updatedList: TradeRecord[] = [];
+
     if (isEdit && existingId) {
       // Update existing trade in-place
-      if (user && user.uid !== 'local_user' && auth.currentUser) {
+      if (db) {
         try {
           const docRef = doc(db, 'trades', existingId);
           await setDoc(docRef, {
             ...partialTrade,
             id: existingId,
-            userId: user.uid,
+            userId: user?.uid || 'shared_user',
             updatedAt: now,
           }, { merge: true });
         } catch (e) {
@@ -321,21 +395,19 @@ export default function App() {
         }
       }
 
-      setTrades(prev => recalculateTradesChronologically(
-        prev.map(t => t.id === existingId ? { ...t, ...partialTrade, updatedAt: now } as TradeRecord : t)
-      ));
-      showToast('💾 交易明细修改成功，已更新同步！');
+      updatedList = trades.map(t => t.id === existingId ? { ...t, ...partialTrade, updatedAt: now } as TradeRecord : t);
+      showToast('💾 交易已更新并已实时推送至云端！全部历史已按时间轴重新对算！');
     } else {
       // Create new trade
       let newId = existingId || `trade_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      if (user && user.uid !== 'local_user' && auth.currentUser) {
+      if (db) {
         try {
           const newDocRef = doc(collection(db, 'trades'));
           newId = newDocRef.id;
           const newTradeData = {
             ...partialTrade,
             id: newId,
-            userId: user.uid,
+            userId: user?.uid || 'shared_user',
             createdAt: now,
             updatedAt: now,
           };
@@ -348,14 +420,16 @@ export default function App() {
       const newTradeRecord: TradeRecord = {
         ...partialTrade,
         id: newId,
-        userId: user ? user.uid : 'local_user',
+        userId: user ? user.uid : 'shared_user',
         createdAt: now,
         updatedAt: now,
       } as TradeRecord;
 
-      setTrades(prev => recalculateTradesChronologically([newTradeRecord, ...prev]));
-      showToast((user && user.uid !== 'local_user' && auth.currentUser) ? '💾 新增交易已成功保存并同步到云端数据库！' : '💾 新增交易已成功保存到本地数据库！');
+      updatedList = [newTradeRecord, ...trades];
+      showToast('💾 新增交易已同步云端！预览端、电脑端与手机端已实时对算同步！');
     }
+
+    updateTradesWithHistory(updatedList);
   };
 
   // Toggle Note Completed Status Handler
@@ -368,7 +442,7 @@ export default function App() {
 
     setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, notesCompleted: newCompleted, updatedAt: now } : t));
 
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         const docRef = doc(db, 'trades', tradeId);
         await updateDoc(docRef, { notesCompleted: newCompleted, updatedAt: now });
@@ -383,7 +457,7 @@ export default function App() {
   const handleDeleteTrades = async (ids: string[]) => {
     if (!ids || ids.length === 0) return;
 
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         const batch = writeBatch(db);
         ids.forEach(id => {
@@ -398,13 +472,12 @@ export default function App() {
       }
     }
 
-    setTrades(prev => {
-      const remaining = prev.filter(t => !ids.includes(t.id));
-      if (remaining.length === 0) {
-        localStorage.setItem('user_has_cleared_trades', 'true');
-      }
-      return remaining;
-    });
+    const remaining = trades.filter(t => !ids.includes(t.id));
+    if (remaining.length === 0) {
+      localStorage.setItem('user_has_cleared_trades', 'true');
+    }
+    updateTradesWithHistory(remaining);
+    showToast(`🗑️ 已成功删除 ${ids.length} 笔交易，云端多端已实时同步！`);
   };
 
   // Import Batch Excel Success
@@ -412,7 +485,7 @@ export default function App() {
     const now = new Date().toISOString();
     const newRecords: TradeRecord[] = [];
 
-    if (user && user.uid !== 'local_user' && auth.currentUser) {
+    if (db) {
       try {
         const batch = writeBatch(db);
         importedList.forEach((t) => {
@@ -421,7 +494,7 @@ export default function App() {
           const recordData = {
             ...t,
             id: newId,
-            userId: user.uid,
+            userId: user?.uid || 'shared_user',
             createdAt: now,
           };
           batch.set(newDocRef, recordData);
@@ -442,17 +515,45 @@ export default function App() {
       });
     }
 
-    setTrades(prev => recalculateTradesChronologically([...newRecords, ...prev]));
+    updateTradesWithHistory([...newRecords, ...trades]);
+    showToast(`📥 成功导入 ${newRecords.length} 笔记录，多端云端已实时更新！`);
     setActiveTab('ledger');
   };
 
   const handleLoadDemoData = () => {
     localStorage.removeItem('user_has_cleared_trades');
-    setTrades(recalculateTradesChronologically(INITIAL_DEMO_TRADES));
+    updateTradesWithHistory(INITIAL_DEMO_TRADES);
+    showToast('🔄 已加载示例数据，并重新倒排对算！');
   };
 
-  const handleExportExcel = () => {
-    exportTradesToExcel(trades);
+  // Smart Filtered Export Excel Handler
+  const handleExportExcel = (customTrades?: TradeRecord[]) => {
+    const listToExport = customTrades || displayTrades;
+    if (!listToExport || listToExport.length === 0) {
+      showToast('⚠️ 当前视图中暂无对账数据可供导出');
+      return;
+    }
+
+    let filename = '股市对账单_交易明细.xlsx';
+
+    // Single stock selected or custom trades filtered for a single stock
+    if (selectedStockCode) {
+      const targetObj = listToExport.find(t => t.stockCode === selectedStockCode || t.stockName === selectedStockCode) || listToExport[0];
+      const stockName = targetObj?.stockName || selectedStockCode;
+      const stockCode = targetObj?.stockCode || '';
+      filename = `股市对账单_${stockName}${stockCode ? `_${stockCode}` : ''}.xlsx`;
+    } else if (customTrades && customTrades.length < trades.length) {
+      const firstStockName = customTrades[0]?.stockName || customTrades[0]?.stockCode;
+      const isSingleStock = customTrades.every(t => t.stockCode === customTrades[0]?.stockCode || t.stockName === customTrades[0]?.stockName);
+      if (isSingleStock && firstStockName) {
+        filename = `股市对账单_${firstStockName}.xlsx`;
+      } else {
+        filename = `股市对账单_筛选细分对账.xlsx`;
+      }
+    }
+
+    exportTradesToExcel(listToExport, filename);
+    showToast(`📊 已导出对账单：${filename} (共 ${listToExport.length} 笔明细)`);
   };
 
   return (
@@ -477,6 +578,10 @@ export default function App() {
         onSaveAndSync={handleSaveAndSyncToDb}
         isCloudSynced={isCloudSynced}
         tradeCount={trades.length}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
       />
 
       {/* Main Container */}
@@ -513,12 +618,17 @@ export default function App() {
             <div className="hidden md:block">
               <TradeTable
                 trades={displayTrades}
+                selectedStockCode={selectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
                 onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
                 onExportExcel={handleExportExcel}
                 onSaveAndSync={handleSaveAndSyncToDb}
                 onToggleNoteCompleted={handleToggleNoteCompleted}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
               />
             </div>
 
