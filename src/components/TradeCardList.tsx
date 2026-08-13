@@ -27,6 +27,7 @@ interface TradeCardListProps {
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
   onToggleNoteCompleted?: (tradeId: string) => void;
+  onSetNoteStatus?: (tradeId: string, status: 'pending' | 'completed' | 'none') => void;
 }
 
 export const TradeCardList: React.FC<TradeCardListProps> = ({
@@ -35,6 +36,7 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
   onDeleteTrades,
   onAddNewTrade,
   onToggleNoteCompleted,
+  onSetNoteStatus,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -197,29 +199,49 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
 
               {/* Note preview if available */}
               {trade.notes && (
-                <div className="text-xs bg-slate-800/50 p-2.5 rounded-xl flex items-center justify-between gap-2 border border-slate-800/80">
-                  <div className="flex items-start space-x-1.5 min-w-0 flex-1">
-                    <FileText className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
-                    <span className={`text-xs break-words line-clamp-2 leading-snug font-medium ${
-                      trade.notesCompleted ? 'text-emerald-400' : 'text-orange-400'
-                    }`}>
-                      {trade.notes}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onToggleNoteCompleted?.(trade.id)}
-                    className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg border font-medium transition-all ${
-                      trade.notesCompleted
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                        : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                    }`}
-                    title={trade.notesCompleted ? '点击重新标记为未完成' : '点击标记备注说明为已完成'}
-                  >
-                    <Check className="w-3 h-3" />
-                    <span>{trade.notesCompleted ? '已完成' : '完成'}</span>
-                  </button>
-                </div>
+                (() => {
+                  const status = trade.notesStatus || (trade.notesCompleted ? 'completed' : 'none');
+                  return (
+                    <div className="text-xs bg-slate-800/50 p-2.5 rounded-xl flex items-center justify-between gap-2 border border-slate-800/80">
+                      <div className="flex items-start space-x-1.5 min-w-0 flex-1">
+                        <FileText className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
+                        <span className={`text-xs break-words line-clamp-2 leading-snug font-medium ${
+                          status === 'completed'
+                            ? 'text-emerald-400'
+                            : status === 'pending'
+                            ? 'text-amber-400'
+                            : 'text-white'
+                        }`}>
+                          {trade.notes}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => onSetNoteStatus?.(trade.id, status === 'pending' ? 'none' : 'pending')}
+                          className={`px-2 py-1 text-[10px] rounded-lg border font-bold transition-all ${
+                            status === 'pending'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-amber-300'
+                          }`}
+                        >
+                          未完成
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onSetNoteStatus?.(trade.id, status === 'completed' ? 'none' : 'completed')}
+                          className={`px-2 py-1 text-[10px] rounded-lg border font-bold transition-all ${
+                            status === 'completed'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-emerald-300'
+                          }`}
+                        >
+                          完成
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
 
               {/* Expandable Full 19-Field Details Drawer */}

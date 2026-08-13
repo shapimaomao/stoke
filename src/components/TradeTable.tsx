@@ -32,6 +32,7 @@ interface TradeTableProps {
   onExportExcel: (customTrades?: TradeRecord[]) => void;
   onSaveAndSync?: () => void;
   onToggleNoteCompleted?: (tradeId: string) => void;
+  onSetNoteStatus?: (tradeId: string, status: 'pending' | 'completed' | 'none') => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -47,6 +48,7 @@ export const TradeTable: React.FC<TradeTableProps> = ({
   onExportExcel,
   onSaveAndSync,
   onToggleNoteCompleted,
+  onSetNoteStatus,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -525,34 +527,59 @@ export const TradeTable: React.FC<TradeTableProps> = ({
                         ) : '-'
                       ) : `¥${trade.positionPnL.toFixed(2)}`}
                     </td>
-                    <td className="px-2 py-2 font-sans min-w-[100px] max-w-[180px]">
+                    <td className="px-2 py-2 font-sans min-w-[110px] max-w-[200px]">
                       {trade.notes ? (
-                        <div className="flex flex-col items-start gap-0.5">
-                          <span
-                            className={`text-[11px] break-words line-clamp-2 leading-tight font-medium ${
-                              trade.notesCompleted ? 'text-emerald-400' : 'text-orange-400'
-                            }`}
-                            title={trade.notes}
-                          >
-                            {trade.notes}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleNoteCompleted?.(trade.id);
-                            }}
-                            className={`inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] rounded border font-sans font-medium transition-all ${
-                              trade.notesCompleted
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                                : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                            }`}
-                            title={trade.notesCompleted ? '点击重新标记为未完成' : '点击标记备注说明为已完成'}
-                          >
-                            <Check className="w-2.5 h-2.5" />
-                            <span>{trade.notesCompleted ? '已完成' : '完成'}</span>
-                          </button>
-                        </div>
+                        (() => {
+                          const status = trade.notesStatus || (trade.notesCompleted ? 'completed' : 'none');
+                          return (
+                            <div className="flex flex-col items-start gap-1">
+                              <span
+                                className={`text-[11px] break-words line-clamp-2 leading-tight font-medium ${
+                                  status === 'completed'
+                                    ? 'text-emerald-400'
+                                    : status === 'pending'
+                                    ? 'text-amber-400'
+                                    : 'text-white'
+                                }`}
+                                title={trade.notes}
+                              >
+                                {trade.notes}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSetNoteStatus?.(trade.id, status === 'pending' ? 'none' : 'pending');
+                                  }}
+                                  className={`px-1.5 py-0.5 text-[9px] rounded border font-medium transition-all ${
+                                    status === 'pending'
+                                      ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 font-bold'
+                                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-amber-300'
+                                  }`}
+                                  title="未完成 (橙色)"
+                                >
+                                  未完成
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSetNoteStatus?.(trade.id, status === 'completed' ? 'none' : 'completed');
+                                  }}
+                                  className={`px-1.5 py-0.5 text-[9px] rounded border font-medium transition-all ${
+                                    status === 'completed'
+                                      ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60 font-bold'
+                                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-emerald-300'
+                                  }`}
+                                  title="完成 (绿色)"
+                                >
+                                  完成
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <span className="text-slate-500">-</span>
                       )}

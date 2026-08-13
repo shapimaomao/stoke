@@ -17,9 +17,12 @@ export function computeTradeDerivedFields(
   const amount = price * quantity;
 
   // Previous stock state
-  const sortedPrev = [...previousTradesForStock].sort(
-    (a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
-  );
+  const sortedPrev = [...previousTradesForStock].sort((a, b) => {
+    const dateA = new Date(a.tradeDate).getTime();
+    const dateB = new Date(b.tradeDate).getTime();
+    if (dateA !== dateB) return dateA - dateB;
+    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+  });
 
   let prevPos = 0;
   let prevCap = 0;
@@ -130,18 +133,11 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
   const updatedAll: TradeRecord[] = [];
 
   Object.values(stockGroups).forEach(group => {
-    // Sort ascending by date; on same date, BUYs and Dividends come before SELLs
+    // Sort ascending by date; on same date, strictly follow input/Excel sequence (createdAt)
     const sorted = [...group].sort((a, b) => {
       const dateA = new Date(a.tradeDate).getTime();
       const dateB = new Date(b.tradeDate).getTime();
       if (dateA !== dateB) return dateA - dateB;
-
-      if (a.tradeAction !== b.tradeAction) {
-        if (a.tradeAction === 'buy') return -1;
-        if (b.tradeAction === 'buy') return 1;
-        if (a.tradeAction === 'dividend') return -1;
-        if (b.tradeAction === 'dividend') return 1;
-      }
 
       return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
     });

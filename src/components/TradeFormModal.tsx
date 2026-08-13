@@ -82,6 +82,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
   const [fee, setFee] = useState<number | ''>(5.00);
   const [notes, setNotes] = useState('');
   const [notesCompleted, setNotesCompleted] = useState(false);
+  const [notesStatus, setNotesStatus] = useState<'pending' | 'completed' | 'none'>('none');
   const [isPendingConfirmation, setIsPendingConfirmation] = useState(false);
 
   // Grid Strategy Helper States
@@ -146,6 +147,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setFee(initialTrade.fee);
       setNotes(initialTrade.notes || '');
       setNotesCompleted(!!initialTrade.notesCompleted);
+      setNotesStatus(initialTrade.notesStatus || (initialTrade.notesCompleted ? 'completed' : 'none'));
       setIsPendingConfirmation(!!initialTrade.isPendingConfirmation);
     } else if (quickStockInfo) {
       setTradeDate(new Date().toISOString().split('T')[0]);
@@ -155,6 +157,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setFee(getRecommendedFee(quickStockInfo.account, quickStockInfo.stockName, quickStockInfo.stockCode));
       setNotes('');
       setNotesCompleted(false);
+      setNotesStatus('none');
       setIsPendingConfirmation(quickStockInfo.account.includes('支付宝'));
       applyPreset(quickStockInfo);
     } else {
@@ -165,6 +168,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setQuantity(1000);
       setNotes('');
       setNotesCompleted(false);
+      setNotesStatus('none');
       setIsPendingConfirmation(false);
       if (presets.length > 0) {
         applyPreset(presets[0]);
@@ -276,7 +280,8 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       fee: numFee,
       isPendingConfirmation,
       notes: finalNotes,
-      notesCompleted: Boolean(notesCompleted && finalNotes.length > 0),
+      notesCompleted: notesStatus === 'completed',
+      notesStatus: notesStatus,
     };
 
     const computed = computeTradeDerivedFields(partial, prevTradesForStock);
@@ -858,26 +863,53 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block font-medium text-slate-300">交易备注 / 下笔买卖挂单准备计划</label>
-              {notes.trim().length > 0 && (
-                <label className="inline-flex items-center space-x-1.5 text-xs cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={notesCompleted}
-                    onChange={e => setNotesCompleted(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded text-emerald-500 focus:ring-emerald-500 bg-slate-950 border-slate-700"
-                  />
-                  <span className={`font-medium ${notesCompleted ? 'text-emerald-400' : 'text-orange-400'}`}>
-                    {notesCompleted ? '✓ 备注事项已完成' : '标记为已完成'}
-                  </span>
-                </label>
-              )}
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = notesStatus === 'pending' ? 'none' : 'pending';
+                    setNotesStatus(next);
+                    setNotesCompleted(false);
+                  }}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-all ${
+                    notesStatus === 'pending'
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/60 shadow-sm'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-amber-300'
+                  }`}
+                >
+                  未完成
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = notesStatus === 'completed' ? 'none' : 'completed';
+                    setNotesStatus(next);
+                    setNotesCompleted(next === 'completed');
+                  }}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-all ${
+                    notesStatus === 'completed'
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/60 shadow-sm'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-emerald-300'
+                  }`}
+                >
+                  完成
+                </button>
+              </div>
             </div>
             <textarea
               rows={3}
               placeholder="记录入场逻辑、复盘体会或下一笔准备用什么价格买卖多少股..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-emerald-500"
+              className={`w-full bg-slate-950 border border-slate-700 rounded-xl p-3 focus:outline-none focus:border-emerald-500 font-medium ${
+                notesStatus === 'completed'
+                  ? 'text-emerald-400'
+                  : notesStatus === 'pending'
+                  ? 'text-amber-400'
+                  : 'text-white'
+              }`}
             />
 
             {/* Quick Notes Memo Injection Buttons */}

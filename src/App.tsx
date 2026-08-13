@@ -432,25 +432,42 @@ export default function App() {
     updateTradesWithHistory(updatedList);
   };
 
+  // Set Note Status Handler (pending = 未完成 / 橙色, completed = 完成 / 绿色, none = 默认 / 白色)
+  const handleSetNoteStatus = async (tradeId: string, status: 'pending' | 'completed' | 'none') => {
+    const targetTrade = trades.find(t => t.id === tradeId);
+    if (!targetTrade) return;
+
+    const isCompleted = status === 'completed';
+    const now = new Date().toISOString();
+
+    setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, notesStatus: status, notesCompleted: isCompleted, updatedAt: now } : t));
+
+    if (db) {
+      try {
+        const docRef = doc(db, 'trades', tradeId);
+        await updateDoc(docRef, { notesStatus: status, notesCompleted: isCompleted, updatedAt: now });
+      } catch (e) {
+        console.error('Update note status error:', e);
+      }
+    }
+
+    if (status === 'completed') {
+      showToast('✅ 备注已标记为“完成”，文字已变绿');
+    } else if (status === 'pending') {
+      showToast('📙 备注已标记为“未完成”，文字已变橙');
+    } else {
+      showToast('⚪ 备注标记已重置，文字恢复默认白色');
+    }
+  };
+
   // Toggle Note Completed Status Handler
   const handleToggleNoteCompleted = async (tradeId: string) => {
     const targetTrade = trades.find(t => t.id === tradeId);
     if (!targetTrade) return;
 
-    const newCompleted = !targetTrade.notesCompleted;
-    const now = new Date().toISOString();
-
-    setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, notesCompleted: newCompleted, updatedAt: now } : t));
-
-    if (db) {
-      try {
-        const docRef = doc(db, 'trades', tradeId);
-        await updateDoc(docRef, { notesCompleted: newCompleted, updatedAt: now });
-      } catch (e) {
-        console.error('Update note completion status error:', e);
-      }
-    }
-    showToast(newCompleted ? '✅ 备注说明已标为“已完成”，颜色变为绿色' : 'ℹ️ 备注说明已重置为“未完成”，颜色恢复为橙色');
+    const currentStatus = targetTrade.notesStatus || (targetTrade.notesCompleted ? 'completed' : 'none');
+    const nextStatus = currentStatus === 'completed' ? 'none' : 'completed';
+    await handleSetNoteStatus(tradeId, nextStatus);
   };
 
   // Delete Trades Handler
@@ -625,6 +642,7 @@ export default function App() {
                 onExportExcel={handleExportExcel}
                 onSaveAndSync={handleSaveAndSyncToDb}
                 onToggleNoteCompleted={handleToggleNoteCompleted}
+                onSetNoteStatus={handleSetNoteStatus}
                 canUndo={canUndo}
                 canRedo={canRedo}
                 onUndo={handleUndo}
@@ -640,6 +658,7 @@ export default function App() {
                 onDeleteTrades={handleDeleteTrades}
                 onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
                 onToggleNoteCompleted={handleToggleNoteCompleted}
+                onSetNoteStatus={handleSetNoteStatus}
               />
             </div>
           </div>

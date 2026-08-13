@@ -295,6 +295,7 @@ export function convertRowsToTrades(
   mapping: ExcelImportFieldMapping,
   userId: string
 ): Partial<TradeRecord>[] {
+  const baseTimestamp = Date.now();
   const parsedTrades: TradeRecord[] = rawRows.map((row, idx) => {
     const getValue = (field: keyof ExcelImportFieldMapping) => {
       const colName = mapping[field];
@@ -375,7 +376,7 @@ export function convertRowsToTrades(
       price,
       quantity,
       notes: String(getValue('notes')).trim(),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(baseTimestamp + idx * 1000).toISOString(),
     };
 
     return computeTradeDerivedFields(partialTrade) as TradeRecord;
