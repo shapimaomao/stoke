@@ -41,20 +41,20 @@ export function computeTradeDerivedFields(
   let accumulatedCapital = prevCap;
 
   if (isDividend) {
-    // 分红不扣减投入本金，直接归入已实现收益 (保持上一笔累计投入本金不变)
+    // 分红回收现金净额：减少累计投入本金，持仓不变
     accumulatedPosition = prevPos;
-    accumulatedCapital = prevCap;
+    accumulatedCapital = prevCap - (amount - fee);
   } else if (isBuy) {
     accumulatedPosition = prevPos + quantity;
     // 买入：上一笔累计投入本金 + 当前笔发生金额 + 手续费
     accumulatedCapital = prevCap + amount + fee;
   } else {
-    // 卖出：上一笔累计投入本金 - 当前笔发生金额 + 手续费
+    // 卖出：上一笔累计投入本金 - 当前笔回收净额 (成交金额 - 手续费)
     accumulatedPosition = Math.max(0, prevPos - quantity);
-    accumulatedCapital = prevCap - amount + fee;
+    accumulatedCapital = accumulatedPosition > 0 ? (prevCap - (amount - fee)) : 0;
   }
 
-  // 4. 持仓成本：累计投入本金 / 累计持仓
+  // 4. 持仓成本 = 本次交易发生时的累计投入本金 ÷ 累计持仓
   let positionCost = 0;
   if (accumulatedPosition > 0) {
     positionCost = accumulatedCapital / accumulatedPosition;
@@ -68,18 +68,18 @@ export function computeTradeDerivedFields(
   // 5. 持仓盈亏%：(当前成交价 - 持仓成本价) ÷ 持仓成本价 × 100%
   const positionPnLPercent = positionCost > 0 ? ((price - positionCost) / positionCost) * 100 : 0;
 
-  // 3. 涨跌比：（本次成交价格 - 上一笔成交价格）÷ 上一笔成交价格 × 100%；分红：不适用（显示 -）
+  // 3. 涨跌比：（本次成交价格 - 上一笔成交价格）÷ 上一笔成交价格 × 100%；分红：不适用（显示 0）
   const gainLossRatio = (isDividend || prevPrice <= 0) ? 0 : ((price - prevPrice) / prevPrice) * 100;
 
   // 卖出已实现收益 & 累计盈亏
   let tradeRealizedPnL = 0;
   if (isDividend) {
-    tradeRealizedPnL = amount;
+    tradeRealizedPnL = amount - fee;
   } else if (!isBuy) {
-    tradeRealizedPnL = (price - prevCost) * quantity - fee;
+    tradeRealizedPnL = (amount - fee) - (prevCost * quantity);
   }
 
-  const accumulatedPnL = prevAccPnL + (isBuy ? -fee : (isDividend ? amount : tradeRealizedPnL));
+  const accumulatedPnL = prevAccPnL + (isBuy ? -fee : tradeRealizedPnL);
 
   return {
     ...trade,
@@ -147,7 +147,7 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
     });
 
     let currentPos = 0;
-    let currentCostBasis = 0; // Total cost basis for remaining shares
+    let currentCapital = 0; // 累计投入本金
     let prevAccPnL = 0;
     let prevPrice = 0;
 
@@ -168,17 +168,22 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
       prevPrice = price;
 
       const prevPos = currentPos;
+      const prevCap = currentCapital;
 
       if (isDividend) {
-        // 分红不扣减持仓和成本基数，直接回收资金并计入收益
+        // 分红回收现金净额：减少累计投入本金，持仓不变
         const netDiv = amount - fee;
         cycleTotalSellNet += netDiv;
         const tradeRealizedPnL = netDiv;
         const newAccPnL = prevAccPnL + tradeRealizedPnL;
         prevAccPnL = newAccPnL;
 
-        const positionCost = currentPos > 0 ? currentCostBasis / currentPos : 0;
-        const accumulatedCapital = currentCostBasis;
+        currentCapital = prevCap - netDiv;
+        // 持仓成本 = 本次累计投入本金 ÷ 累计持仓
+        const positionCost = currentPos > 0 ? currentCapital / currentPos : 0;
+
+        const positionPnL = (price - positionCost) * currentPos;
+        const positionPnLPercent = positionCost > 0 ? ((price - positionCost) / positionCost) * 100 : 0;
 
         updatedAll.push({
           ...t,
@@ -187,24 +192,24 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
           fee,
           amount: Math.round(amount * 1000) / 1000,
           accumulatedPosition: currentPos,
-          accumulatedCapital: Math.round(accumulatedCapital * 1000) / 1000,
+          accumulatedCapital: Math.round(currentCapital * 1000) / 1000,
           positionCost: Math.round(positionCost * 1000) / 1000,
           gainLossRatio: Math.round(gainLossRatio * 1000) / 1000,
-          positionPnLPercent: 0,
-          positionPnL: 0,
+          positionPnLPercent: Math.round(positionPnLPercent * 1000) / 1000,
+          positionPnL: Math.round(positionPnL * 1000) / 1000,
           accumulatedPnL: Math.round(newAccPnL * 1000) / 1000,
         });
 
       } else if (isBuy) {
         const buyCost = amount + fee;
         currentPos += quantity;
-        currentCostBasis += buyCost;
+        currentCapital += buyCost;
         cycleTotalBuyCost += buyCost;
 
-        cycleMaxCapital = Math.max(cycleMaxCapital, currentCostBasis);
+        cycleMaxCapital = Math.max(cycleMaxCapital, currentCapital);
 
-        const positionCost = currentPos > 0 ? currentCostBasis / currentPos : 0;
-        const accumulatedCapital = currentCostBasis;
+        // 持仓成本 = 本次累计投入本金 ÷ 累计持仓
+        const positionCost = currentPos > 0 ? currentCapital / currentPos : 0;
 
         const newAccPnL = prevAccPnL - fee;
         prevAccPnL = newAccPnL;
@@ -219,7 +224,7 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
           fee,
           amount: Math.round(amount * 1000) / 1000,
           accumulatedPosition: currentPos,
-          accumulatedCapital: Math.round(accumulatedCapital * 1000) / 1000,
+          accumulatedCapital: Math.round(currentCapital * 1000) / 1000,
           positionCost: Math.round(positionCost * 1000) / 1000,
           gainLossRatio: Math.round(gainLossRatio * 1000) / 1000,
           positionPnLPercent: Math.round(positionPnLPercent * 1000) / 1000,
@@ -232,24 +237,24 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
         const netSell = amount - fee;
         cycleTotalSellNet += netSell;
 
-        const prevUnitCost = prevPos > 0 ? currentCostBasis / prevPos : 0;
-        const costOfSoldShares = prevUnitCost * quantity;
-        const tradeRealizedPnL = netSell - costOfSoldShares;
-
         const newPos = Math.max(0, currentPos - quantity);
         currentPos = newPos;
 
         if (newPos > 0) {
-          currentCostBasis -= costOfSoldShares;
+          currentCapital -= netSell;
         } else {
-          currentCostBasis = 0;
+          currentCapital = 0;
         }
+
+        // 持仓成本 = 本次累计投入本金 ÷ 累计持仓
+        const positionCost = newPos > 0 ? currentCapital / newPos : 0;
+
+        const prevUnitCost = prevPos > 0 ? prevCap / prevPos : 0;
+        const costOfSoldShares = prevUnitCost * quantity;
+        const tradeRealizedPnL = netSell - costOfSoldShares;
 
         const newAccPnL = prevAccPnL + tradeRealizedPnL;
         prevAccPnL = newAccPnL;
-
-        const positionCost = newPos > 0 ? currentCostBasis / newPos : 0;
-        const accumulatedCapital = currentCostBasis;
 
         const positionPnL = newPos > 0 ? (price - positionCost) * newPos : 0;
         const positionPnLPercent = (newPos > 0 && positionCost > 0) ? ((price - positionCost) / positionCost) * 100 : 0;
@@ -272,6 +277,7 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
           cycleTotalBuyCost = 0;
           cycleTotalSellNet = 0;
           cycleMaxCapital = 0;
+          currentCapital = 0;
         }
 
         updatedAll.push({
@@ -281,7 +287,7 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
           fee,
           amount: Math.round(amount * 1000) / 1000,
           accumulatedPosition: newPos,
-          accumulatedCapital: Math.round(accumulatedCapital * 1000) / 1000,
+          accumulatedCapital: Math.round(currentCapital * 1000) / 1000,
           positionCost: Math.round(positionCost * 1000) / 1000,
           gainLossRatio: Math.round(gainLossRatio * 1000) / 1000,
           positionPnLPercent: Math.round(positionPnLPercent * 1000) / 1000,
