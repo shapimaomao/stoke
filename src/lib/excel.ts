@@ -4,18 +4,18 @@ import { computeTradeDerivedFields, recalculateTradesChronologically } from './c
 
 // Alias dictionary for intelligent column header matching
 const COLUMN_ALIASES: Record<keyof ExcelImportFieldMapping, string[]> = {
-  stockCode: ['股票代码', '证券代码', '代码', '标的代码', 'Symbol', 'Stock Code', 'stockCode', '证券标志', '合约代码', '品种代码'],
-  stockName: ['股票名称', '证券名称', '标的名称', '名称', 'Stock Name', 'Name', 'stockName', '合约名称', '品种名称'],
-  account: ['股票账户行', '账户', '券商', '交易账户', '账户名', 'Account', 'Broker', 'account', '股东代码', '资金账号', '操作渠道'],
+  stockCode: ['股票代码', '证券代码', '代码', '标的代码', 'Symbol', 'Stock Code', 'stockCode', '证券标志', '合约代码', '品种代码', '证券代码/名称', '代码/名称', '标的/代码', '证券/代码'],
+  stockName: ['股票名称', '证券名称', '标的名称', '名称', 'Stock Name', 'Name', 'stockName', '合约名称', '品种名称', '证券简称', '标的简称', '证券名称/代码', '股票/名称', '品种/名称', '产品名称', '基金名称', '标的'],
+  account: ['股票账户行', '账户', '券商', '交易账户', '账户名', 'Account', 'Broker', 'account', '股东代码', '资金账号', '操作渠道', '股东账号', '营业部'],
   strategyName: ['策略名称', '交易策略', '策略', 'Strategy', 'Strategy Name', 'strategyName'],
   strategyType: ['策略归属', '策略来源', '策略类型', '自己/别人策略', 'Strategy Type', 'strategyType'],
-  tradeDate: ['成交日期', '交易日期', '委托时间', '成交时间', '日期', 'Date', 'Trade Date', 'tradeDate', '发生日期', '交割日期', '成交时间/日期', '委托日期', '清算日期'],
+  tradeDate: ['成交日期', '交易日期', '委托时间', '成交时间', '日期', 'Date', 'Trade Date', 'tradeDate', '发生日期', '交割日期', '成交时间/日期', '委托日期', '清算日期', '变动日期', '确认日期'],
   orderType: ['委托类别', '订单类型', '委托类型', 'Order Type', 'Type', 'orderType'],
-  tradeAction: ['买入卖出判断', '买卖判断', '方向', '操作', '买卖', 'Action', 'Side', 'tradeAction', '买卖标志', '业务名称', '操作类型', '委托方向', '成交方向', '交易方向', '业务标志', '操作名称', '类别', '业务类型', '买卖方向', '摘要', '备注说明', '交易类别', '委托动作'],
-  fee: ['手续费', '佣金', '规费', '印花税', '总费用', 'Fee', 'Commission', 'fee', '交易费', '过户费', '发生费用', '费用'],
-  price: ['成交价格', '成交均价', '买卖价格', '成交单价', '单价', '价格', 'Price', 'price', '成交价', '均价', '委托价格'],
-  quantity: ['成交数量', '数量', '股数', '成交股数', '发生数量', '变动数量', 'Quantity', 'Qty', 'quantity', '成交量', '委托数量', '平仓数量'],
-  amount: ['发生金额', '成交金额', '清算金额', '变动金额', 'Amount', 'amount', '成交总额', '结算金额'],
+  tradeAction: ['买入卖出判断', '买卖判断', '方向', '操作', '买卖', 'Action', 'Side', 'tradeAction', '买卖标志', '业务名称', '操作类型', '委托方向', '成交方向', '交易方向', '业务标志', '操作名称', '类别', '业务类型', '买卖方向', '摘要', '备注说明', '交易类别', '委托动作', '摘要说明'],
+  fee: ['手续费', '佣金', '规费', '印花税', '总费用', 'Fee', 'Commission', 'fee', '交易费', '过户费', '发生费用', '费用', '扣费', '其他费用'],
+  price: ['成交价格', '成交均价', '买卖价格', '成交单价', '单价', '价格', 'Price', 'price', '成交价', '均价', '委托价格', '结算价', '单位净值'],
+  quantity: ['成交数量', '数量', '股数', '成交股数', '发生数量', '变动数量', 'Quantity', 'Qty', 'quantity', '成交量', '委托数量', '平仓数量', '变动股数', '成交份数', '份数'],
+  amount: ['发生金额', '成交金额', '清算金额', '变动金额', 'Amount', 'amount', '成交总额', '结算金额', '成交额', '发生额', '资金变动'],
   accumulatedCapital: ['累计投入金额', '累计投入', '投入本金', 'Capital', 'accumulatedCapital'],
   accumulatedPosition: ['累计持仓', '持仓股数', '当前持仓', 'Position', 'accumulatedPosition'],
   positionCost: ['持仓成本', '成本价', '保本价', 'Cost', 'positionCost'],
@@ -218,6 +218,82 @@ export function parseStockFromSheetName(sheetName: string): { code: string; name
 }
 
 /**
+ * Helper to test whether an identifier is a generic fallback sheet/table name
+ */
+export function isGenericIdentifier(str: string): boolean {
+  if (!str) return true;
+  const s = str.trim().toLowerCase();
+  return (
+    s === 'unknown' ||
+    s === '未命名股票' ||
+    s === '未命名标的' ||
+    s.startsWith('sheet') ||
+    s.includes('工作表') ||
+    s.includes('对账单') ||
+    s.includes('成交明细') ||
+    s.includes('历史交易')
+  );
+}
+
+/**
+ * Intelligently extracts clean stock code & name from raw values, handling merged columns like "贵州茅台(600519)".
+ */
+export function extractStockCodeAndName(
+  rawCode: string,
+  rawName: string,
+  sheetName?: string
+): { stockCode: string; stockName: string } {
+  let code = String(rawCode || '').trim();
+  let name = String(rawName || '').trim();
+
+  // 1. If code contains combined string like "600519/贵州茅台" or "贵州茅台(600519)"
+  if (!name && code) {
+    const m = code.match(/([0-9]{5,6}(\.[A-Za-z]{2})?|[A-Za-z]{1,5})/);
+    if (m) {
+      const extractedCode = m[0];
+      const extractedName = code.replace(extractedCode, '').replace(/[()（）_\-\s\/]+/g, ' ').trim();
+      code = extractedCode;
+      name = extractedName || extractedCode;
+    }
+  }
+
+  // 2. If name contains combined string like "贵州茅台(600519)" or "600519 贵州茅台" or "平安银行 000001"
+  if (name) {
+    const m = name.match(/([0-9]{5,6}(\.[A-Za-z]{2})?)/);
+    if (m) {
+      const extractedCode = m[0];
+      const cleanedName = name.replace(extractedCode, '').replace(/[()（）_\-\s\/]+/g, ' ').trim();
+      if (!code || isGenericIdentifier(code)) {
+        code = extractedCode;
+      }
+      if (cleanedName) {
+        name = cleanedName;
+      }
+    }
+  }
+
+  // 3. Smart fallbacks: preserve distinct name as code if code is missing/generic
+  if (!code && name) code = name;
+  if (!name && code) name = code;
+
+  // 4. If STILL missing or generic, use sheetName as fallback
+  if ((!code || !name || isGenericIdentifier(code) || isGenericIdentifier(name)) && sheetName) {
+    const derived = parseStockFromSheetName(sheetName);
+    if ((!code || isGenericIdentifier(code)) && derived.code && !isGenericIdentifier(derived.code)) {
+      code = derived.code;
+    }
+    if ((!name || isGenericIdentifier(name)) && derived.name && !isGenericIdentifier(derived.name)) {
+      name = derived.name;
+    }
+  }
+
+  if (!code) code = 'UNKNOWN';
+  if (!name) name = '未命名标的';
+
+  return { stockCode: code, stockName: name };
+}
+
+/**
  * Parses binary Excel/CSV file content across ALL sheets into json records with detected headers.
  */
 export function parseExcelFile(file: File): Promise<ExcelParseResult> {
@@ -240,10 +316,54 @@ export function parseExcelFile(file: File): Promise<ExcelParseResult> {
           const worksheet = workbook.Sheets[sheetName];
           if (!worksheet) return;
 
-          const json = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
-          if (!json || json.length === 0) return; // Skip empty sheets
+          // Detect true header row by scoring first 15 rows for known column keywords
+          const matrix = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+          if (!matrix || matrix.length === 0) return;
 
-          const sheetHeaders = Object.keys(json[0] || {});
+          let maxScore = -999;
+          let headerRowIndex = 0;
+
+          const strongHeaderKeywords = [
+            '代码', '名称', '股票', '证券', '标的', '日期', '时间', '买卖', '操作', 
+            '方向', '类别', '价格', '单价', '均价', '数量', '股数', '金额', '费用', 
+            '佣金', '印花税', '摘要', '备注', '账号', '券商', '交割', '清算'
+          ];
+
+          for (let i = 0; i < Math.min(15, matrix.length); i++) {
+            const rowArr = matrix[i];
+            if (!Array.isArray(rowArr)) continue;
+            
+            const nonEmpCells = rowArr.map(cell => String(cell || '').trim()).filter(Boolean);
+            if (nonEmpCells.length < 2) continue; // Skip single text / title / empty rows
+
+            const joinedStr = nonEmpCells.join(' ');
+            
+            // Penalty for title / metadata header rows
+            let score = 0;
+            if (joinedStr.includes('对账单') || joinedStr.includes('交割单') || joinedStr.includes('查询时间') || joinedStr.includes('打印日期') || joinedStr.includes('客户名称')) {
+              score -= 10;
+            }
+
+            // Reward distinct cells matching column keywords
+            nonEmpCells.forEach(cellText => {
+              if (strongHeaderKeywords.some(kw => cellText.includes(kw))) {
+                score += 3;
+              }
+            });
+
+            if (score > maxScore) {
+              maxScore = score;
+              headerRowIndex = i;
+            }
+          }
+
+          const json = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { 
+            range: headerRowIndex, 
+            defval: '' 
+          });
+          if (!json || json.length === 0) return;
+
+          const sheetHeaders = Object.keys(json[0] || {}).map(h => String(h).trim()).filter(Boolean);
           sheetHeaders.forEach(h => allHeadersSet.add(h));
 
           const derived = parseStockFromSheetName(sheetName);
@@ -305,22 +425,12 @@ export function convertRowsToTrades(
     const rawStockCode = String(getValue('stockCode')).trim();
     const rawStockName = String(getValue('stockName')).trim();
 
-    let stockCode = rawStockCode;
-    let stockName = rawStockName;
+    const { stockCode, stockName } = extractStockCodeAndName(
+      rawStockCode, 
+      rawStockName, 
+      row._sheetName
+    );
 
-    // Smart fallback: If missing or generic, derive stock code/name from Sheet Name
-    if (row._sheetName) {
-      const derived = parseStockFromSheetName(row._sheetName);
-      if (!stockCode || stockCode === 'UNKNOWN' || stockCode === '') {
-        stockCode = derived.code || 'UNKNOWN';
-      }
-      if (!stockName || stockName === '未命名股票' || stockName === '') {
-        stockName = derived.name || '未命名股票';
-      }
-    }
-
-    if (!stockCode) stockCode = 'UNKNOWN';
-    if (!stockName) stockName = '未命名股票';
     const account = String(getValue('account')).trim() || '主账户';
     const strategyName = String(getValue('strategyName')).trim() || '默认策略';
     
@@ -382,8 +492,21 @@ export function convertRowsToTrades(
     return computeTradeDerivedFields(partialTrade) as TradeRecord;
   });
 
+  // Filter out invalid/empty rows or summary footer notes (e.g. "合计", "打印时间")
+  const validTrades = parsedTrades.filter(t => {
+    const hasValues = (t.price > 0 && t.quantity > 0) || Math.abs(t.amount || 0) > 0 || t.tradeAction === 'dividend';
+    const isSummaryText = t.stockName && (
+      t.stockName.includes('合计') || 
+      t.stockName.includes('小计') || 
+      t.stockName.includes('期末') || 
+      t.stockName.includes('打印') ||
+      t.stockName.includes('统计')
+    );
+    return hasValues && !isSummaryText;
+  });
+
   // Re-run chronological calculation across all parsed records to ensure position cost, accumulated PnL, position PnL %, and amount are 100% computed
-  return recalculateTradesChronologically(parsedTrades);
+  return recalculateTradesChronologically(validTrades);
 }
 
 /**

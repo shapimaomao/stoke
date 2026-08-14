@@ -18,7 +18,8 @@ import {
   convertRowsToTrades, 
   downloadExcelTemplate,
   ExcelSheetData,
-  ExcelParseResult 
+  ExcelParseResult,
+  isGenericIdentifier 
 } from '../lib/excel';
 
 interface ExcelImportModalProps {
@@ -137,7 +138,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const convertedPreviewTrades = convertRowsToTrades(activeRows, mapping, userId);
   const stockSummaryMap: Record<string, { code: string; name: string; count: number }> = {};
   convertedPreviewTrades.forEach(t => {
-    const key = `${t.stockCode}_${t.stockName}`;
+    const key = t.stockName && !isGenericIdentifier(t.stockName)
+      ? t.stockName
+      : (t.stockCode && !isGenericIdentifier(t.stockCode) ? t.stockCode : `${t.stockCode}_${t.stockName}`);
     if (!stockSummaryMap[key]) {
       stockSummaryMap[key] = { code: t.stockCode || 'UNKNOWN', name: t.stockName || '股票', count: 0 };
     }

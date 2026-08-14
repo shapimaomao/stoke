@@ -23,7 +23,9 @@ import { formatStrategyOwner, getStrategyOwnerBadgeStyle } from '../lib/strategy
 
 interface TradeCardListProps {
   trades: TradeRecord[];
+  totalTradeCount?: number;
   selectedStockCode?: string | null;
+  onSelectStock?: (code: string | null) => void;
   onEditTrade: (trade: TradeRecord) => void;
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
@@ -33,7 +35,9 @@ interface TradeCardListProps {
 
 export const TradeCardList: React.FC<TradeCardListProps> = ({
   trades,
+  totalTradeCount,
   selectedStockCode,
+  onSelectStock,
   onEditTrade,
   onDeleteTrades,
   onAddNewTrade,
@@ -93,6 +97,24 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
 
   return (
     <div className="space-y-3 my-4">
+      {/* Active Stock Filter Notification Banner for Mobile */}
+      {selectedStockCode && (
+        <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl text-xs text-emerald-300 space-y-1.5">
+          <div className="flex items-center justify-between font-bold">
+            <span>💡 仅显示【{selectedStockCode}】</span>
+            <span className="text-[10px] text-slate-400 font-mono">({filtered.length}/{totalTradeCount || trades.length}笔)</span>
+          </div>
+          {onSelectStock && (
+            <button
+              onClick={() => onSelectStock(null)}
+              className="w-full py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-semibold transition-all cursor-pointer text-center"
+            >
+              取消过滤，查看全量账单
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Mobile Search & Add Header */}
       <div className="flex items-center space-x-2">
         <div className="relative flex-1">

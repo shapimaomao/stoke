@@ -565,41 +565,50 @@ export default function App() {
   // Import Batch Excel Success
   const handleImportSuccess = async (importedList: Partial<TradeRecord>[]) => {
     const now = new Date().toISOString();
-    const newRecords: TradeRecord[] = [];
+    
+    // 1. Process all imported records into clean TradeRecord objects immediately
+    const newRecords: TradeRecord[] = importedList.map((t, idx) => {
+      const id = t.id && !t.id.startsWith('imported_') 
+        ? t.id 
+        : `imp_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`;
+      return {
+        ...t,
+        id,
+        userId: user ? user.uid : 'shared_user',
+        createdAt: t.createdAt || now,
+        updatedAt: now,
+      } as TradeRecord;
+    });
 
-    if (db) {
-      try {
-        const batch = writeBatch(db);
-        importedList.forEach((t) => {
-          const newDocRef = doc(collection(db, 'trades'));
-          const newId = newDocRef.id;
-          const recordData = {
-            ...t,
-            id: newId,
-            userId: user?.uid || 'shared_user',
-            createdAt: now,
-          };
-          batch.set(newDocRef, recordData);
-          newRecords.push(recordData as TradeRecord);
-        });
-        await batch.commit();
-      } catch (e) {
-        console.error('Firestore import batch set error:', e);
-      }
-    } else {
-      importedList.forEach((t, i) => {
-        newRecords.push({
-          ...t,
-          id: `imp_${Date.now()}_${i}`,
-          userId: user ? user.uid : 'local_user',
-          createdAt: now,
-        } as TradeRecord);
-      });
-    }
+    // 2. Synchronously update local state & local storage so ALL 10-20+ stocks appear instantly
+    const updatedTrades = [...newRecords, ...trades];
+    updateTradesWithHistory(updatedTrades);
+    
+    // Reset stock filter so ALL imported stocks and transactions are displayed in the ledger
+    setSelectedStockCode(null);
 
-    updateTradesWithHistory([...newRecords, ...trades]);
-    showToast(`📥 成功导入 ${newRecords.length} 笔记录，多端云端已实时更新！`);
+    const uniqueStocks = new Set(newRecords.map(r => r.stockName || r.stockCode)).size;
+    showToast(`🎉 成功全量导入 ${newRecords.length} 笔交易记录（涵盖 ${uniqueStocks} 只股票/基金）！已为您展示全量对账单！`);
     setActiveTab('ledger');
+
+    // 3. Fire-and-forget background batch sync to Cloud Firestore in chunks of 400
+    if (db && newRecords.length > 0) {
+      try {
+        const chunkSize = 400;
+        for (let i = 0; i < newRecords.length; i += chunkSize) {
+          const chunk = newRecords.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          chunk.forEach((record) => {
+            const docRef = doc(db, 'trades', record.id);
+            const payload = sanitizeForFirestore(record);
+            batch.set(docRef, payload, { merge: true });
+          });
+          await batch.commit();
+        }
+      } catch (e) {
+        console.error('Firestore background import batch write error:', e);
+      }
+    }
   };
 
   const handleLoadDemoData = () => {
@@ -701,7 +710,9 @@ export default function App() {
             <div className="hidden md:block">
               <TradeTable
                 trades={displayTrades}
+                totalTradeCount={trades.length}
                 selectedStockCode={selectedStockCode}
+                onSelectStock={setSelectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
                 onAddNewTrade={handleAddNewTrade}
@@ -720,7 +731,9 @@ export default function App() {
             <div className="md:hidden">
               <TradeCardList
                 trades={displayTrades}
+                totalTradeCount={trades.length}
                 selectedStockCode={selectedStockCode}
+                onSelectStock={setSelectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
                 onAddNewTrade={handleAddNewTrade}

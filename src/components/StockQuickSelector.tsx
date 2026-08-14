@@ -62,17 +62,32 @@ export const StockQuickSelector: React.FC<StockQuickSelectorProps> = ({
     const name = (t.stockName || '').trim();
     if (!code && !name) return;
 
+    const isGeneric = (str: string) => {
+      if (!str) return true;
+      const s = str.trim().toLowerCase();
+      return (
+        s === 'unknown' ||
+        s === '未命名股票' ||
+        s === '未命名标的' ||
+        s.startsWith('sheet') ||
+        s.includes('工作表') ||
+        s.includes('对账单') ||
+        s.includes('成交明细') ||
+        s.includes('历史交易')
+      );
+    };
+
     let key = '';
-    if (code && codeToKey.has(code)) {
+    if (code && !isGeneric(code) && codeToKey.has(code)) {
       key = codeToKey.get(code)!;
-    } else if (name && nameToKey.has(name)) {
+    } else if (name && !isGeneric(name) && nameToKey.has(name)) {
       key = nameToKey.get(name)!;
     } else {
-      key = code || name;
+      key = (!isGeneric(name) ? name : (!isGeneric(code) ? code : `${code}_${name}`));
     }
 
-    if (code) codeToKey.set(code, key);
-    if (name) nameToKey.set(name, key);
+    if (code && !isGeneric(code)) codeToKey.set(code, key);
+    if (name && !isGeneric(name)) nameToKey.set(name, key);
 
     const existing = stockMap.get(key);
     // Quantity calculation: BUY adds, SELL subtracts, DIVIDEND does NOT subtract position

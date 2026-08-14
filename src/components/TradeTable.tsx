@@ -25,7 +25,9 @@ import { formatStrategyOwner, getStrategyOwnerBadgeStyle } from '../lib/strategy
 
 interface TradeTableProps {
   trades: TradeRecord[];
+  totalTradeCount?: number;
   selectedStockCode?: string | null;
+  onSelectStock?: (code: string | null) => void;
   onEditTrade: (trade: TradeRecord) => void;
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
@@ -41,7 +43,9 @@ interface TradeTableProps {
 
 export const TradeTable: React.FC<TradeTableProps> = ({
   trades,
+  totalTradeCount,
   selectedStockCode,
+  onSelectStock,
   onEditTrade,
   onDeleteTrades,
   onAddNewTrade,
@@ -183,6 +187,24 @@ export const TradeTable: React.FC<TradeTableProps> = ({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden my-4">
+      {/* Active Stock Filter Notification Banner */}
+      {selectedStockCode && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-xs text-emerald-300">
+          <div className="flex items-center space-x-2">
+            <span className="font-bold">💡 当前处于股票【{selectedStockCode}】过滤视图</span>
+            <span className="text-slate-400">（仅显示该股票 {sortedTrades.length} 笔成交，全量账单共 {totalTradeCount || trades.length} 笔）</span>
+          </div>
+          {onSelectStock && (
+            <button
+              onClick={() => onSelectStock(null)}
+              className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            >
+              取消过滤，查看全量对账单 ({totalTradeCount || trades.length}笔)
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Table Header Controls */}
       <div className="p-4 border-b border-slate-800 bg-slate-900/90 flex flex-wrap gap-3 items-center justify-between">
         <div className="flex items-center space-x-2 flex-1 min-w-[240px]">
