@@ -455,67 +455,46 @@ export default function App() {
   };
 
   // Add / Edit Trade Handler
-  const handleSaveTrade = async (partialTrade: Partial<TradeRecord>) => {
+  const handleSaveTrade = (partialTrade: Partial<TradeRecord>) => {
     const now = new Date().toISOString();
     const existingId = partialTrade.id;
     const isEdit = Boolean(existingId && trades.some(t => t.id === existingId));
 
-    let updatedList: TradeRecord[] = [];
-
-    if (isEdit && existingId) {
-      // Update existing trade in-place
-      const updatedTradeData = {
-        ...partialTrade,
-        id: existingId,
-        userId: user?.uid || 'shared_user',
-        updatedAt: now,
-      };
-
-      if (db) {
-        try {
-          const docRef = doc(db, 'trades', existingId);
-          await setDoc(docRef, sanitizeForFirestore(updatedTradeData), { merge: true });
-        } catch (e) {
-          console.error('Firestore update error:', e);
-        }
+    let newId = existingId || `trade_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    
+    if (!isEdit && db) {
+      try {
+        const newDocRef = doc(collection(db, 'trades'));
+        newId = newDocRef.id;
+      } catch (e) {
+        console.warn('Doc ref generation error:', e);
       }
-
-      updatedList = trades.map(t => t.id === existingId ? { ...t, ...partialTrade, updatedAt: now } as TradeRecord : t);
-      showToast('💾 交易已更新并已实时推送至云端！全部历史已按时间轴重新对算！');
-    } else {
-      // Create new trade
-      let newId = existingId || `trade_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      
-      if (db) {
-        try {
-          const newDocRef = doc(collection(db, 'trades'));
-          newId = newDocRef.id;
-          const newTradeData = {
-            ...partialTrade,
-            id: newId,
-            userId: user?.uid || 'shared_user',
-            createdAt: now,
-            updatedAt: now,
-          };
-          await setDoc(newDocRef, sanitizeForFirestore(newTradeData));
-        } catch (e) {
-          console.error('Firestore add error:', e);
-        }
-      }
-
-      const newTradeRecord: TradeRecord = {
-        ...partialTrade,
-        id: newId,
-        userId: user ? user.uid : 'shared_user',
-        createdAt: now,
-        updatedAt: now,
-      } as TradeRecord;
-
-      updatedList = [newTradeRecord, ...trades];
-      showToast('💾 新增交易已保存！已实时对算并同步！');
     }
 
+    const tradeRecord: TradeRecord = {
+      ...partialTrade,
+      id: newId,
+      userId: user?.uid || 'shared_user',
+      createdAt: isEdit ? (partialTrade.createdAt || now) : now,
+      updatedAt: now,
+    } as TradeRecord;
+
+    const updatedList = isEdit
+      ? trades.map(t => t.id === existingId ? { ...t, ...partialTrade, updatedAt: now } as TradeRecord : t)
+      : [tradeRecord, ...trades];
+
+    // 1. Immediately update local state & localStorage synchronously for fast UI feedback
     updateTradesWithHistory(updatedList);
+    showToast(isEdit ? '💾 交易记录已成功保存与更新！' : '💾 新增交易记录已成功保存与对算！');
+
+    // 2. Fire-and-forget background sync to Cloud Firestore
+    if (db) {
+      const docRef = doc(db, 'trades', newId);
+      const payload = sanitizeForFirestore(tradeRecord);
+      setDoc(docRef, payload, { merge: true }).catch(e => {
+        console.error('Firestore background save sync error:', e);
+      });
+    }
   };
 
   // Set Note Status Handler (pending = 未完成 / 橙色, completed = 完成 / 绿色, none = 默认 / 白色)

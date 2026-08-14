@@ -109,11 +109,11 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
 
   // Fill preset metadata helper
   const applyPreset = (preset: QuickStockInfo) => {
-    setStockCode(preset.stockCode);
-    setStockName(preset.stockName);
-    setAccount(preset.account);
-    setStrategyName(preset.strategyName);
-    setStrategyType(preset.strategyType);
+    setStockCode(preset.stockCode || '');
+    setStockName(preset.stockName || '');
+    setAccount(preset.account || '华泰证券');
+    setStrategyName(preset.strategyName || '网格套利');
+    setStrategyType(preset.strategyType || '自己');
     setFee(getRecommendedFee(preset.account, preset.stockName, preset.stockCode));
 
     // If strategy contains "网格" or previous trade used grid order, auto set orderType
@@ -126,10 +126,12 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       if (latest.orderType) setOrderType(latest.orderType);
       if (latest.quantity) {
         setGridStepQuantity(latest.quantity);
-        if (latest.orderType === 'grid' || latest.strategyName.includes('网格')) {
-          setQuantity(latest.quantity);
-        }
+        setQuantity(latest.quantity);
+      } else {
+        setQuantity(1000);
       }
+    } else {
+      setQuantity(1000);
     }
   };
 
@@ -157,6 +159,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setOrderType('limit');
       setTradeAction('buy');
       setPrice(10.00);
+      setQuantity(1000);
       setFee(getRecommendedFee(quickStockInfo.account, quickStockInfo.stockName, quickStockInfo.stockCode));
       setNotes('');
       setNotesCompleted(false);
@@ -293,15 +296,28 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       resolvedName = matched && matched.stockName ? matched.stockName : resolvedCode;
     }
 
-    if (!resolvedCode || !resolvedName) {
+    if (!resolvedCode && !resolvedName) {
       alert('请选择或填写入场标的名称或代码！');
       return;
     }
 
-    if (numPrice <= 0 || numQty <= 0) {
-      alert('请填写有效的成交价格与成交数量（必须大于 0）！');
+    if (!resolvedCode) resolvedCode = resolvedName;
+    if (!resolvedName) resolvedName = resolvedCode;
+
+    const parsedPrice = Number(String(price).replace(/[,，\s]/g, '')) || 0;
+    const parsedQty = Number(String(quantity).replace(/[,，\s]/g, '')) || 0;
+
+    if (parsedPrice <= 0) {
+      alert('请填写有效的成交价格（成交单价必须大于 0）！');
       return;
     }
+
+    if (parsedQty <= 0) {
+      alert('请填写有效的成交数量（成交股数必须大于 0）！');
+      return;
+    }
+
+    const parsedFee = tradeAction === 'dividend' ? 0 : (Number(String(fee).replace(/[,，\s]/g, '')) || 0);
 
     let finalNotes = notes.trim();
 
@@ -315,9 +331,9 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       tradeDate: tradeDate || new Date().toISOString().split('T')[0],
       orderType,
       tradeAction,
-      price: numPrice,
-      quantity: numQty,
-      fee: numFee,
+      price: parsedPrice,
+      quantity: parsedQty,
+      fee: parsedFee,
       isPendingConfirmation,
       notes: finalNotes,
       notesCompleted: notesStatus === 'completed',
