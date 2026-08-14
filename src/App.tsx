@@ -425,6 +425,11 @@ export default function App() {
     setIsTradeFormOpen(true);
   };
 
+  // Clean object for Firestore (strips undefined fields)
+  const sanitizeForFirestore = (obj: Record<string, any>) => {
+    return JSON.parse(JSON.stringify(obj));
+  };
+
   // Explicit Save & Sync All Trades to Database Handler
   const handleSaveAndSyncToDb = async () => {
     localStorage.setItem('local_stock_trades', JSON.stringify(trades));
@@ -434,7 +439,8 @@ export default function App() {
         trades.forEach(t => {
           if (t.id) {
             const docRef = doc(db, 'trades', t.id);
-            batch.set(docRef, { ...t, userId: user?.uid || 'shared_user' }, { merge: true });
+            const payload = sanitizeForFirestore({ ...t, userId: user?.uid || 'shared_user' });
+            batch.set(docRef, payload, { merge: true });
           }
         });
         await batch.commit();
@@ -458,15 +464,17 @@ export default function App() {
 
     if (isEdit && existingId) {
       // Update existing trade in-place
+      const updatedTradeData = {
+        ...partialTrade,
+        id: existingId,
+        userId: user?.uid || 'shared_user',
+        updatedAt: now,
+      };
+
       if (db) {
         try {
           const docRef = doc(db, 'trades', existingId);
-          await setDoc(docRef, {
-            ...partialTrade,
-            id: existingId,
-            userId: user?.uid || 'shared_user',
-            updatedAt: now,
-          }, { merge: true });
+          await setDoc(docRef, sanitizeForFirestore(updatedTradeData), { merge: true });
         } catch (e) {
           console.error('Firestore update error:', e);
         }
@@ -477,6 +485,7 @@ export default function App() {
     } else {
       // Create new trade
       let newId = existingId || `trade_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
       if (db) {
         try {
           const newDocRef = doc(collection(db, 'trades'));
@@ -488,7 +497,7 @@ export default function App() {
             createdAt: now,
             updatedAt: now,
           };
-          await setDoc(newDocRef, newTradeData);
+          await setDoc(newDocRef, sanitizeForFirestore(newTradeData));
         } catch (e) {
           console.error('Firestore add error:', e);
         }
@@ -503,7 +512,7 @@ export default function App() {
       } as TradeRecord;
 
       updatedList = [newTradeRecord, ...trades];
-      showToast('💾 新增交易已同步云端！预览端、电脑端与手机端已实时对算同步！');
+      showToast('💾 新增交易已保存！已实时对算并同步！');
     }
 
     updateTradesWithHistory(updatedList);

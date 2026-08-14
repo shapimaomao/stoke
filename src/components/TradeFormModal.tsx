@@ -189,20 +189,40 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
   // Auto-matching when user types a matching stock code
   const handleStockCodeChange = (codeVal: string) => {
     setStockCode(codeVal);
-    const matched = existingTrades.find(t => t.stockCode.toLowerCase() === codeVal.trim().toLowerCase());
+    if (!codeVal.trim()) return;
+    const matched = existingTrades.find(t => t.stockCode && t.stockCode.toLowerCase() === codeVal.trim().toLowerCase());
     if (matched) {
-      setStockName(matched.stockName);
-      setAccount(matched.account);
-      setStrategyName(matched.strategyName);
-      setStrategyType(matched.strategyType);
+      if (matched.stockName) setStockName(matched.stockName);
+      if (matched.account) setAccount(matched.account);
+      if (matched.strategyName) setStrategyName(matched.strategyName);
+      if (matched.strategyType) setStrategyType(matched.strategyType);
       setFee(getRecommendedFee(matched.account, matched.stockName, codeVal));
-      if (matched.orderType === 'grid' || matched.strategyName.includes('网格')) {
+      if (matched.orderType === 'grid' || (matched.strategyName && matched.strategyName.includes('网格'))) {
         setOrderType('grid');
         setQuantity(matched.quantity);
         setGridStepQuantity(matched.quantity);
       }
     } else {
       setFee(getRecommendedFee(account, stockName, codeVal));
+    }
+  };
+
+  // Auto-matching when user types a matching stock name
+  const handleStockNameChange = (nameVal: string) => {
+    setStockName(nameVal);
+    if (!nameVal.trim()) return;
+    const matched = existingTrades.find(t => t.stockName && t.stockName.toLowerCase() === nameVal.trim().toLowerCase());
+    if (matched) {
+      if (!stockCode || stockCode.trim() === '') setStockCode(matched.stockCode);
+      if (matched.account) setAccount(matched.account);
+      if (matched.strategyName) setStrategyName(matched.strategyName);
+      if (matched.strategyType) setStrategyType(matched.strategyType);
+      setFee(getRecommendedFee(matched.account, nameVal, matched.stockCode));
+      if (matched.orderType === 'grid' || (matched.strategyName && matched.strategyName.includes('网格'))) {
+        setOrderType('grid');
+        setQuantity(matched.quantity);
+        setGridStepQuantity(matched.quantity);
+      }
     }
   };
 
@@ -227,7 +247,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
   
   // Find last trade for this stock/strategy to calculate price variance
   const prevTradesForStock = existingTrades.filter(
-    t => t.stockCode === stockCode && t.id !== initialTrade?.id
+    t => ((stockCode && t.stockCode === stockCode) || (stockName && t.stockName === stockName)) && t.id !== initialTrade?.id
   );
   const lastTradePrice = prevTradesForStock.length > 0 ? prevTradesForStock[0].price : 0;
 
@@ -260,22 +280,39 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stockCode || !stockName || numPrice <= 0 || numQty <= 0) {
-      alert('请填写入场股票代码、名称、有效成交价格与数量！');
+    
+    // Resolve smart fallbacks for stock code and stock name
+    let resolvedCode = stockCode.trim();
+    let resolvedName = stockName.trim();
+
+    if (!resolvedCode && resolvedName) {
+      const matched = existingTrades.find(t => t.stockName && t.stockName.toLowerCase() === resolvedName.toLowerCase());
+      resolvedCode = matched && matched.stockCode ? matched.stockCode : resolvedName;
+    } else if (!resolvedName && resolvedCode) {
+      const matched = existingTrades.find(t => t.stockCode && t.stockCode.toLowerCase() === resolvedCode.toLowerCase());
+      resolvedName = matched && matched.stockName ? matched.stockName : resolvedCode;
+    }
+
+    if (!resolvedCode || !resolvedName) {
+      alert('请选择或填写入场标的名称或代码！');
       return;
     }
 
-    // Auto append 1.5x warning if applicable and user hasn't opted out
+    if (numPrice <= 0 || numQty <= 0) {
+      alert('请填写有效的成交价格与成交数量（必须大于 0）！');
+      return;
+    }
+
     let finalNotes = notes.trim();
 
     const partial: Partial<TradeRecord> = {
-      id: initialTrade?.id,
-      stockCode: stockCode.trim(),
-      stockName: stockName.trim(),
-      account: account.trim(),
-      strategyName: strategyName.trim(),
-      strategyType,
-      tradeDate,
+      ...(initialTrade?.id ? { id: initialTrade.id } : {}),
+      stockCode: resolvedCode,
+      stockName: resolvedName,
+      account: account.trim() || '华泰证券',
+      strategyName: strategyName.trim() || '网格套利',
+      strategyType: strategyType || '自己',
+      tradeDate: tradeDate || new Date().toISOString().split('T')[0],
       orderType,
       tradeAction,
       price: numPrice,
@@ -358,11 +395,10 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
           {/* Stock Code & Stock Name */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-slate-300 mb-1">股票代码 *</label>
+              <label className="block font-medium text-slate-300 mb-1">股票代码</label>
               <input
                 type="text"
-                placeholder="例如 600519 / 000001"
-                required
+                placeholder="例如 600519 / 000001 (可空)"
                 value={stockCode}
                 onChange={e => handleStockCodeChange(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
@@ -370,13 +406,13 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-medium text-slate-300 mb-1">股票名称 *</label>
+              <label className="block font-medium text-slate-300 mb-1">股票/基金名称 *</label>
               <input
                 type="text"
-                placeholder="例如 贵州茅台"
+                placeholder="例如 贵州茅台 / 中百集团"
                 required
                 value={stockName}
-                onChange={e => setStockName(e.target.value)}
+                onChange={e => handleStockNameChange(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-emerald-500"
               />
             </div>
