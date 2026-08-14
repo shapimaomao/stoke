@@ -128,15 +128,15 @@ export const TradeTable: React.FC<TradeTableProps> = ({
     }
   };
 
-  // Auto-scroll down to the last record whenever component mounts or filtered data changes
+  // Auto-scroll down to the last record ONLY when a specific stock or fund is selected
   useEffect(() => {
-    if (sortedTrades.length > 0) {
+    if (selectedStockCode && sortedTrades.length > 0) {
       const timer = setTimeout(() => {
         scrollToLastRecord();
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [sortedTrades.length, searchTerm, strategyFilter, accountFilter, actionFilter, sortField, sortOrder]);
+  }, [selectedStockCode, sortedTrades.length, searchTerm, strategyFilter, accountFilter, actionFilter, sortField, sortOrder]);
 
   const handleSort = (field: keyof TradeRecord) => {
     if (sortField === field) {

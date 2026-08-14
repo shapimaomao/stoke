@@ -243,7 +243,21 @@ export default function App() {
         const hasCleared = localStorage.getItem('user_has_cleared_trades') === 'true';
 
         if (firestoreTrades.length > 0) {
-          setTrades(recalculateTradesChronologically(firestoreTrades));
+          setTrades(prevLocal => {
+            const map = new Map<string, TradeRecord>();
+            // Add Firestore trades
+            firestoreTrades.forEach(t => { if (t.id) map.set(t.id, t); });
+            // Preserve local trades that might not be in Firestore yet (unless cleared)
+            if (!hasCleared) {
+              prevLocal.forEach(t => {
+                if (t.id && !map.has(t.id)) {
+                  map.set(t.id, t);
+                }
+              });
+            }
+            const merged = Array.from(map.values());
+            return recalculateTradesChronologically(merged);
+          });
           setIsCloudSynced(true);
         } else if (hasCleared) {
           setTrades([]);
@@ -349,11 +363,67 @@ export default function App() {
     return calculatePerformanceMetrics(trades);
   }, [trades]);
 
-  // Filtered trades by selected stock
+  // Filtered trades by selected stock with smart multi-attribute matching
   const displayTrades = useMemo(() => {
     if (!selectedStockCode) return trades;
-    return trades.filter(t => t.stockCode === selectedStockCode || t.stockName === selectedStockCode);
+    
+    const filterKey = selectedStockCode.trim().toLowerCase();
+    
+    // Collect all related codes/names associated with this selected stock
+    const matchingCodes = new Set<string>();
+    const matchingNames = new Set<string>();
+    matchingCodes.add(filterKey);
+    matchingNames.add(filterKey);
+
+    trades.forEach(t => {
+      const c = (t.stockCode || '').trim().toLowerCase();
+      const n = (t.stockName || '').trim().toLowerCase();
+      if ((c && c === filterKey) || (n && n === filterKey)) {
+        if (c) matchingCodes.add(c);
+        if (n) matchingNames.add(n);
+      }
+    });
+
+    return trades.filter(t => {
+      const code = (t.stockCode || '').trim().toLowerCase();
+      const name = (t.stockName || '').trim().toLowerCase();
+      return (code && matchingCodes.has(code)) || (name && matchingNames.has(name));
+    });
   }, [trades, selectedStockCode]);
+
+  // Add New Trade Handler - defaults to selected stock if currently filtered
+  const handleAddNewTrade = () => {
+    setEditingTrade(null);
+    if (selectedStockCode) {
+      const filterKey = selectedStockCode.trim().toLowerCase();
+      const matchingTrade = trades.find(t => 
+        (t.stockCode && t.stockCode.trim().toLowerCase() === filterKey) || 
+        (t.stockName && t.stockName.trim().toLowerCase() === filterKey)
+      );
+
+      if (matchingTrade) {
+        setQuickStockInfo({
+          stockCode: matchingTrade.stockCode,
+          stockName: matchingTrade.stockName,
+          account: matchingTrade.account,
+          strategyName: matchingTrade.strategyName,
+          strategyType: matchingTrade.strategyType,
+        });
+      } else {
+        const isCode = /^\d+/.test(selectedStockCode);
+        setQuickStockInfo({
+          stockCode: isCode ? selectedStockCode : '',
+          stockName: !isCode ? selectedStockCode : '',
+          account: '华泰证券',
+          strategyName: '网格套利',
+          strategyType: '自己',
+        });
+      }
+    } else {
+      setQuickStockInfo(null);
+    }
+    setIsTradeFormOpen(true);
+  };
 
   // Explicit Save & Sync All Trades to Database Handler
   const handleSaveAndSyncToDb = async () => {
@@ -596,7 +666,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         user={user}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onOpenTradeForm={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+        onOpenTradeForm={handleAddNewTrade}
         onExportExcel={handleExportExcel}
         onLoadDemoData={handleLoadDemoData}
         onSaveAndSync={handleSaveAndSyncToDb}
@@ -646,7 +716,7 @@ export default function App() {
                 selectedStockCode={selectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
-                onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+                onAddNewTrade={handleAddNewTrade}
                 onExportExcel={handleExportExcel}
                 onSaveAndSync={handleSaveAndSyncToDb}
                 onToggleNoteCompleted={handleToggleNoteCompleted}
@@ -662,9 +732,10 @@ export default function App() {
             <div className="md:hidden">
               <TradeCardList
                 trades={displayTrades}
+                selectedStockCode={selectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
-                onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+                onAddNewTrade={handleAddNewTrade}
                 onToggleNoteCompleted={handleToggleNoteCompleted}
                 onSetNoteStatus={handleSetNoteStatus}
               />
@@ -745,7 +816,7 @@ export default function App() {
             trades={trades}
             onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
             onSetNoteStatus={handleSetNoteStatus}
-            onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+            onAddNewTrade={handleAddNewTrade}
           />
         )}
       </main>

@@ -117,7 +117,10 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
     setFee(getRecommendedFee(preset.account, preset.stockName, preset.stockCode));
 
     // If strategy contains "网格" or previous trade used grid order, auto set orderType
-    const matchingTrades = existingTrades.filter(t => t.stockCode === preset.stockCode);
+    const matchingTrades = existingTrades.filter(t => 
+      (preset.stockCode && t.stockCode === preset.stockCode) || 
+      (preset.stockName && t.stockName === preset.stockName)
+    );
     if (matchingTrades.length > 0) {
       const latest = matchingTrades[0];
       if (latest.orderType) setOrderType(latest.orderType);

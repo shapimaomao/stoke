@@ -23,6 +23,7 @@ import { formatStrategyOwner, getStrategyOwnerBadgeStyle } from '../lib/strategy
 
 interface TradeCardListProps {
   trades: TradeRecord[];
+  selectedStockCode?: string | null;
   onEditTrade: (trade: TradeRecord) => void;
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
@@ -32,6 +33,7 @@ interface TradeCardListProps {
 
 export const TradeCardList: React.FC<TradeCardListProps> = ({
   trades,
+  selectedStockCode,
   onEditTrade,
   onDeleteTrades,
   onAddNewTrade,
@@ -77,13 +79,13 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
   };
 
   useEffect(() => {
-    if (filtered.length > 0) {
+    if (selectedStockCode && filtered.length > 0) {
       const timer = setTimeout(() => {
         scrollToLastRecord();
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [filtered.length, searchTerm]);
+  }, [selectedStockCode, filtered.length, searchTerm]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
